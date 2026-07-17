@@ -1,8 +1,7 @@
 import streamlit as st
 import random
 import os
-import segno
-import io
+import urllib.parse
 
 # Datei, in der die Antworten auf dem Server gespeichert werden
 DATA_FILE = "submissions.txt"
@@ -27,11 +26,10 @@ def save_submission(nationality, text):
     with open(DATA_FILE, "a", encoding="utf-8") as f:
         f.write(f"{safe_nationality}||{safe_text}\n")
 
-# Streamlit Setup (Weitwinkel-Ansicht für den Beamer)
+# Streamlit Setup
 st.set_page_config(page_title="Interactive Q&A", page_icon="🎲", layout="wide")
 
 # --- ERKENNUNG DER ANSICHT (BEAMER VS. HANDY) ---
-# Holt den Parameter "view" aus der URL (z.B. ?view=phone)
 query_params = st.query_params
 is_phone_view = query_params.get("view") == "phone"
 
@@ -41,7 +39,6 @@ if is_phone_view:
     st.write("---")
     
     with st.form("survey_form", clear_on_submit=True):
-        # Jetzt als Texteingabe statt Dropdown
         nationality = st.text_input("Your Nationality:", placeholder="e.g., German, Spanish, French...")
         answer = st.text_area("Your Answer:", placeholder="Type your answer here...")
         submitted = st.form_submit_button("Send Answer 🚀")
@@ -58,52 +55,36 @@ if is_phone_view:
 # --- 🖥️ LAPTOP / BEAMER-ANSICHT ---
 else:
     # 1. Große Frage ganz oben
-    st.markdown("<h1 style='text-align: center; font-size: 3rem;'>Today's Big Question:</h1>", unsafe_allow_name_matching=True)
-    st.markdown("<div style='background-color: #f0f2f6; padding: 25px; border-radius: 10px; text-align: center; margin-bottom: 30px;'><h2 style='font-size: 2.2rem; color: #1f77b4; margin: 0;'>\"What is your favorite travel destination and why?\"</h2></div>", unsafe_allow_name_matching=True)
+    st.markdown("<h1 style='text-align: center; font-size: 3rem;'>Today's Big Question:</h1>", unsafe_allow_html=True)
+    st.markdown("<div style='background-color: #f0f2f6; padding: 25px; border-radius: 10px; text-align: center; margin-bottom: 30px;'><h2 style='font-size: 2.2rem; color: #1f77b4; margin: 0;'>\"What is your favorite travel destination and why?\"</h2></div>", unsafe_allow_html=True)
     
-    # Zweispaltiges Layout: Links der QR-Code, rechts die Admin-Steuerung
     col_left, col_right = st.columns([1, 1.2])
     
     with col_left:
         st.write("### 📲 Scan to Participate")
         st.write("Scan this code with your smartphone to join the session:")
         
-        # Dynamische Ermittlung der eigenen URL
-        # Wenn lokal getestet wird, nutzt es localhost, auf Streamlit Cloud die echte URL
-        try:
-            # Versucht die aktuelle URL zu greifen, um den QR-Code automatisch anzupassen
-            base_url = st.get_option("server.address") if st.get_option("server.address") else "localhost"
-            # Fallback falls online auf Streamlit Cloud
-            if "streamlit.app" in st.experimental_user.get("email", ""): 
-                # Ein kleiner Trick um den Cloud-Link zu raten, falls das fehlschlägt, tragt unten eure feste URL ein!
-                current_url = "https://share.streamlit.io" 
-            else:
-                current_url = "http://localhost:8501"
-        except:
-            current_url = "http://localhost:8501" # Lokaler Fallback
-            
-        # TIPP: Ersetze diese URL hier mit deiner echten Streamlit-URL, sobald du sie hochgeladen hast!
-        # Z.B. app_url = "https://dein-projekt.streamlit.app/?view=phone"
-        app_url = f"{current_url}/?view=phone"
+        # HIER DEINE ECHTE URL EINTRAGEN:
+        # Ersetze das hier nach dem Deployen mit z.B.: "https://dein-projekt.streamlit.app"
+        my_base_url = "https://cscl.streamlit.app" 
         
-        # QR Code generieren mithilfe von Segno
-        qr = segno.make(app_url)
-        qr_img = io.BytesIO()
-        qr.save(qr_img, kind='png', scale=10)
-        st.image(qr_img.getvalue(), width=280)
+        app_url = f"{my_base_url}/?view=phone"
+        
+        # QR-Code über die kostenlose Google Chart API generieren (Keine Installation nötig!)
+        encoded_url = urllib.parse.quote_plus(app_url)
+        qr_api_url = f"https://chart.googleapis.com/chart?chs=300x300&cht=qr&chl={encoded_url}&choof=utf-8"
+        
+        # Bild direkt via URL anzeigen
+        st.image(qr_api_url, width=280)
         st.caption(f"Direct link: {app_url}")
         
     with col_right:
         st.write("### 📊 Live Stats & Controls")
         
-        # Echtzeit-Daten laden
         all_answers = load_submissions()
-        
-        # Große Anzeige der eingegangenen Stimmen
         st.metric(label="Answers Received", value=len(all_answers))
         st.write("---")
         
-        # Buttons für die Steuerung
         btn_col1, btn_col2 = st.columns(2)
         
         with btn_col1:
@@ -111,7 +92,6 @@ else:
                 if all_answers:
                     winner = random.choice(all_answers)
                     st.balloons()
-                    # Wir speichern den Gewinner in der Session, damit er nicht beim nächsten Laden verschwindet
                     st.session_state.current_winner = winner
                 else:
                     st.warning("No answers submitted yet.")
@@ -125,7 +105,6 @@ else:
                 st.success("All answers cleared!")
                 st.rerun()
 
-        # Zeige den gezogenen Gewinner groß an
         if "current_winner" in st.session_state:
             winner = st.session_state.current_winner
             st.markdown(
