@@ -66,7 +66,7 @@ else:
         
         # HIER DEINE ECHTE URL EINTRAGEN:
         # Ersetze das hier nach dem Deployen mit z.B.: "https://dein-projekt.streamlit.app"
-        my_base_url = "https://cscl.streamlit.app"
+        my_base_url = "https://cujzkogtgshddpta5j2adk.streamlit.app/"
         
         app_url = f"{my_base_url}/?view=phone"
         
