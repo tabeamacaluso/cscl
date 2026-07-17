@@ -2,32 +2,61 @@ import streamlit as st
 import random
 import os
 import urllib.parse
+import json
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
 
-# Datei, in der die Antworten auf dem Server gespeichert werden
-DATA_FILE = "submissions.txt"
+# --- Dateipfade für den Datenaustausch ---
+DATA_FILE = "submissions.json"
+STATE_FILE = "app_state.json"
 
-# Hilfsfunktionen zum Lesen und Schreiben der geteilten Datei
+# Die drei auswählbaren Fragen
+QUESTIONS = [
+    "What is your favorite travel destination and why?",
+    "Which programming language do you prefer?",
+    "How are you feeling today?"
+]
+
+# --- Hilfsfunktionen für Speichern & Laden ---
 def load_submissions():
-    if not os.path.exists(DATA_FILE):
-        return []
-    submissions = []
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line and "||" in line:
-                parts = line.split("||")
-                if len(parts) == 2:
-                    submissions.append({"nationality": parts[0], "text": parts[1]})
-    return submissions
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
 
-def save_submission(nationality, text):
-    safe_nationality = nationality.replace("\n", " ").replace("||", " ").strip()
-    safe_text = text.replace("\n", " ").replace("||", " ").strip()
-    with open(DATA_FILE, "a", encoding="utf-8") as f:
-        f.write(f"{safe_nationality}||{safe_text}\n")
+def save_submission(question, nationality, text):
+    data = load_submissions()
+    if question not in data:
+        data[question] = []
+    
+    # Speichert Nationalität und Text als Dictionary ab
+    data[question].append({
+        "nationality": nationality.strip(),
+        "text": text.strip()
+    })
+    
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
 
-# Streamlit Setup
-st.set_page_config(page_title="Interactive Q&A", page_icon="🎲", layout="wide")
+def load_active_question():
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, "r", encoding="utf-8") as f:
+                state = json.load(f)
+                return state.get("active_question", QUESTIONS[0])
+        except:
+            return QUESTIONS[0]
+    return QUESTIONS[0]
+
+def save_active_question(question):
+    with open(STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump({"active_question": question}, f, ensure_ascii=False, indent=4)
+
+# Streamlit Setup (Breitbild für Beamer)
+st.set_page_config(page_title="Interactive Presentation", page_icon="🎲", layout="wide")
 
 # --- ERKENNUNG DER ANSICHT (BEAMER VS. HANDY) ---
 query_params = st.query_params
@@ -37,6 +66,16 @@ is_phone_view = query_params.get("view") == "phone"
 if is_phone_view:
     st.title("📝 Submit Your Answer")
     st.write("---")
+    
+    # Aktualisiert die Frage alle 2 Sekunden im Hintergrund, falls der Beamer sie wechselt
+    @st.fragment(run_every=2)
+    def live_question_for_user():
+        active_q = load_active_question()
+        st.subheader("Current Question:")
+        st.info(f"**{active_q}**")
+        return active_q
+
+    current_q = live_question_for_user()
     
     with st.form("survey_form", clear_on_submit=True):
         nationality = st.text_input("Your Nationality:", placeholder="e.g., German, Spanish, French...")
@@ -49,71 +88,125 @@ if is_phone_view:
             elif not answer.strip():
                 st.error("Please enter your answer!")
             else:
-                save_submission(nationality, answer)
+                save_submission(current_q, nationality, answer)
                 st.success("Successfully submitted! Watch the presentation screen.")
 
 # --- 🖥️ LAPTOP / BEAMER-ANSICHT ---
 else:
-    # 1. Große Frage ganz oben
-    st.markdown("<h1 style='text-align: center; font-size: 3rem;'>Today's Big Question:</h1>", unsafe_allow_html=True)
-    st.markdown("<div style='background-color: #f0f2f6; padding: 25px; border-radius: 10px; text-align: center; margin-bottom: 30px;'><h2 style='font-size: 2.2rem; color: #1f77b4; margin: 0;'>\"What is your favorite travel destination and why?\"</h2></div>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; font-size: 2.5rem; margin-bottom: 20px;'>Interactive Presentation Panel</h1>", unsafe_allow_html=True)
     
-    col_left, col_right = st.columns([1, 1.2])
+    # 1. Fragenauswahl oben für den Präsentator
+    current_active = load_active_question()
+    try:
+        start_index = QUESTIONS.index(current_active)
+    except ValueError:
+        start_index = 0
+
+    selected_q = st.selectbox(
+        "Select the active question for your audience:", 
+        QUESTIONS, 
+        index=start_index
+    )
+    
+    if selected_q != current_active:
+        save_active_question(selected_q)
+        st.rerun()
+
+    st.markdown("---")
+    
+    # Zweispaltiges Layout: Links QR-Code & Controls, rechts Live-Wordcloud
+    col_left, col_right = st.columns([1, 1.3])
     
     with col_left:
         st.write("### 📲 Scan to Participate")
-        st.write("Scan this code with your smartphone to join the session:")
+        st.write("Scan this code with your phone to join and answer:")
         
         # HIER DEINE ECHTE URL EINTRAGEN:
-        # Ersetze das hier nach dem Deployen mit z.B.: "https://dein-projekt.streamlit.app"
-        my_base_url = "https://cujzkogtgshddpta5j2adk.streamlit.app/"
-        
+        my_base_url = "https://cujzkogtgshddpta5j2adk.streamlit.app/" 
         app_url = f"{my_base_url}/?view=phone"
         
-        # QR-Code über die super stabile QRServer-API generieren (völlig ohne Installation!)
+        # QR-Code über die api.qrserver.com API generieren
         encoded_url = urllib.parse.quote_plus(app_url)
         qr_api_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={encoded_url}"
         
-        # Bild direkt via URL anzeigen
-        st.image(qr_api_url, width=280)
-        st.caption(f"Direct link: {app_url}")
-        
-    with col_right:
-        st.write("### 📊 Live Stats & Controls")
-        
-        all_answers = load_submissions()
-        st.metric(label="Answers Received", value=len(all_answers))
+        st.image(qr_api_url, width=240)
+        st.caption(f"Direct link: [Link]({app_url})")
         st.write("---")
+        
+        # Controls & Buttons
+        st.write("### ⚙️ Controls")
+        
+        all_data = load_submissions()
+        current_answers = all_data.get(selected_q, [])
+        st.metric(label="Answers for this question", value=len(current_answers))
         
         btn_col1, btn_col2 = st.columns(2)
         
         with btn_col1:
-            if st.button("Pick a Random Answer 🎲", use_container_width=True, type="primary"):
-                if all_answers:
-                    winner = random.choice(all_answers)
+            if st.button("Pick Random 🎲", use_container_width=True, type="primary"):
+                if current_answers:
+                    winner = random.choice(current_answers)
                     st.balloons()
                     st.session_state.current_winner = winner
                 else:
-                    st.warning("No answers submitted yet.")
+                    st.warning("No answers yet.")
                     
         with btn_col2:
-            if st.button("Reset All Answers 🗑️", use_container_width=True):
-                if os.path.exists(DATA_FILE):
-                    os.remove(DATA_FILE)
+            if st.button("Reset Answers 🗑️", use_container_width=True):
+                # Löscht nur die Antworten der AKTUELLEN Frage
+                all_data = load_submissions()
+                if selected_q in all_data:
+                    del all_data[selected_q]
+                with open(DATA_FILE, "w", encoding="utf-8") as f:
+                    json.dump(all_data, f, ensure_ascii=False, indent=4)
+                
                 if "current_winner" in st.session_state:
                     del st.session_state.current_winner
-                st.success("All answers cleared!")
+                st.success("Answers cleared!")
                 st.rerun()
-
+        
+        # Gewinneranzeige
         if "current_winner" in st.session_state:
             winner = st.session_state.current_winner
             st.markdown(
                 f"""
-                <div style='border: 2px solid #ff4b4b; padding: 20px; border-radius: 10px; margin-top: 20px; background-color: #fff2f2;'>
-                    <h3 style='color: #ff4b4b; margin-top: 0;'>🎉 Selected Answer:</h3>
-                    <p style='font-size: 1.2rem; margin-bottom: 8px;'>🌍 <b>Nationality:</b> {winner['nationality']}</p>
-                    <p style='font-size: 1.4rem; font-style: italic; color: #333;'>"{winner['text']}"</p>
+                <div style='border: 2px solid #ff4b4b; padding: 15px; border-radius: 10px; margin-top: 15px; background-color: #fff2f2;'>
+                    <h4 style='color: #ff4b4b; margin: 0;'>🎉 Selected Answer:</h4>
+                    <p style='font-size: 1.1rem; margin: 5px 0;'>🌍 <b>From:</b> {winner['nationality']}</p>
+                    <p style='font-size: 1.2rem; font-style: italic; color: #333;'>"{winner['text']}"</p>
                 </div>
                 """, 
                 unsafe_allow_html=True
             )
+
+    with col_right:
+        st.write("### ☁️ Live Word Cloud")
+        
+        # Aktualisiert die Wordcloud alle 3 Sekunden live
+        @st.fragment(run_every=3)
+        def live_wordcloud(question):
+            all_data = load_submissions()
+            current_answers = [ans["text"] for ans in all_data.get(question, [])]
+            
+            if current_answers:
+                # Füge alle Texte zusammen
+                text = " ".join(current_answers)
+                
+                # Wordcloud generieren
+                wordcloud = WordCloud(
+                    width=800, 
+                    height=450, 
+                    background_color="white",
+                    colormap="viridis",
+                    collocations=False
+                ).generate(text)
+                
+                fig, ax = plt.subplots(figsize=(10, 5.5))
+                ax.imshow(wordcloud, interpolation="bilinear")
+                ax.axis("off")
+                plt.tight_layout(pad=0)
+                st.pyplot(fig)
+            else:
+                st.info("Waiting for submissions... The word cloud will appear here once participants send their answers.")
+        
+        live_wordcloud(selected_q)
