@@ -122,7 +122,7 @@ else:
         st.write("Scan this code with your phone to join and answer:")
         
         # HIER DEINE ECHTE URL EINTRAGEN:
-        my_base_url = "https://cujzkogtgshddpta5j2adk.streamlit.app/" 
+        my_base_url = "https://cultureconnect.streamlit.app/" 
         app_url = f"{my_base_url}/?view=phone"
         
         # QR-Code über die api.qrserver.com API generieren
