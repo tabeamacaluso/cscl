@@ -5,7 +5,6 @@ import urllib.parse
 import json
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
-from collections import Counter
 
 # --- Dateipfade für den Datenaustausch ---
 DATA_FILE = "submissions.json"
@@ -183,38 +182,31 @@ else:
     with col_right:
         st.write("### ☁️ Live Word Cloud")
         
-        @st.fragment(run_every=20)
-        def live_html_wordcloud(question):
+        # Aktualisiert die Wordcloud alle 3 Sekunden live
+        @st.fragment(run_every=3)
+        def live_wordcloud(question):
             all_data = load_submissions()
+            current_answers = [ans["text"] for ans in all_data.get(question, [])]
             
-            # WICHTIG: Wir lassen die Antworten als Ganzes (kein Splitten nach Leerzeichen!)
-            # Wir bereinigen nur Leerzeichen am Anfang/Ende und vereinheitlichen die Schreibweise
-            raw_answers = [ans["text"].strip() for ans in all_data.get(question, []) if ans["text"].strip()]
-            
-            if raw_answers:
-                # Zähle, wie oft jede exakte Antwort vorkommt
-                word_counts = Counter(raw_answers)
-                max_count = max(word_counts.values())
+            if current_answers:
+                # Füge alle Texte zusammen
+                text = " ".join(current_answers)
                 
-                # Coole Farbpalette für die Wörter/Phrasen
-                colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#17becf"]
+                # Wordcloud generieren
+                wordcloud = WordCloud(
+                    width=800, 
+                    height=450, 
+                    background_color="white",
+                    colormap="viridis",
+                    collocations=False
+                ).generate(text)
                 
-                # HTML für die eigene Wordcloud generieren
-                html_content = "<div style='display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 20px; padding: 30px; background: white; border-radius: 15px; min-height: 300px; border: 1px solid #e6e9ef;'>"
-                
-                for phrase, count in word_counts.items():
-                    # Schriftgröße berechnen: Häufigere Antworten werden größer (16px bis 50px)
-                    size = 16 + (count / max_count) * 34 if max_count > 1 else 24
-                    color = random.choice(colors)
-                    
-                    # white-space: nowrap verhindert, dass z.B. "New York" umgebrochen wird
-                    html_content += f"<span style='font-size: {size}px; color: {color}; font-weight: bold; font-family: sans-serif; white-space: nowrap; transition: all 0.3s;'>{phrase}</span>"
-                
-                html_content += "</div>"
-                
-                # HTML in Streamlit rendern
-                st.markdown(html_content, unsafe_allow_html=True)
+                fig, ax = plt.subplots(figsize=(10, 5.5))
+                ax.imshow(wordcloud, interpolation="bilinear")
+                ax.axis("off")
+                plt.tight_layout(pad=0)
+                st.pyplot(fig)
             else:
                 st.info("Waiting for submissions... The word cloud will appear here once participants send their answers.")
         
-        live_html_wordcloud(selected_q)
+        live_wordcloud(selected_q)
