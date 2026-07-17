@@ -5,6 +5,7 @@ import urllib.parse
 import json
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
+from collections import Counter
 
 # --- Dateipfade für den Datenaustausch ---
 DATA_FILE = "submissions.json"
@@ -183,24 +184,27 @@ else:
         st.write("### ☁️ Live Word Cloud")
         
         # Aktualisiert die Wordcloud alle 3 Sekunden live
-        @st.fragment(run_every=3)
+        @st.fragment(run_every=20)
         def live_wordcloud(question):
             all_data = load_submissions()
-            current_answers = [ans["text"] for ans in all_data.get(question, [])]
+            raw_answers = [ans["text"].strip() for ans in all_data.get(question, []) if ans["text"].strip()]
             
-            if current_answers:
-                # Füge alle Texte zusammen
-                text = " ".join(current_answers)
+            if raw_answers:
+                # 1. Wir zählen die Häufigkeiten der kompletten Antworten (Phrasen bleiben intakt!)
+                word_counts = Counter(raw_answers)
                 
-                # Wordcloud generieren
+                # 2. Wir generieren die Wordcloud auf Basis des Dictionaries (Häufigkeiten)
+                # 'collocations=False' stellt sicher, dass nichts zerstückelt wird
                 wordcloud = WordCloud(
                     width=800, 
                     height=450, 
                     background_color="white",
                     colormap="viridis",
-                    collocations=False
-                ).generate(text)
+                    collocations=False,
+                    prefer_horizontal=0.7 # 70% der Wörter liegen waagerecht, der Rest senkrecht
+                ).generate_from_frequencies(word_counts)
                 
+                # 3. Das Bild via Matplotlib zeichnen
                 fig, ax = plt.subplots(figsize=(10, 5.5))
                 ax.imshow(wordcloud, interpolation="bilinear")
                 ax.axis("off")
