@@ -186,33 +186,68 @@ else:
         @st.fragment(run_every=20)
         def live_html_wordcloud(question):
             all_data = load_submissions()
-            
-            # WICHTIG: Wir lassen die Antworten als Ganzes (kein Splitten nach Leerzeichen!)
-            # Wir bereinigen nur Leerzeichen am Anfang/Ende und vereinheitlichen die Schreibweise
             raw_answers = [ans["text"].strip() for ans in all_data.get(question, []) if ans["text"].strip()]
             
             if raw_answers:
-                # Zähle, wie oft jede exakte Antwort vorkommt
+                # Häufigkeiten zählen
                 word_counts = Counter(raw_answers)
                 max_count = max(word_counts.values())
                 
-                # Coole Farbpalette für die Wörter/Phrasen
-                colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#17becf"]
+                # Coole, moderne Farbpalette
+                colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#17becf", "#10b981", "#6366f1"]
                 
-                # HTML für die eigene Wordcloud generieren
-                html_content = "<div style='display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 20px; padding: 30px; background: white; border-radius: 15px; min-height: 300px; border: 1px solid #e6e9ef;'>"
+                # Wir machen aus den Daten eine Liste, um sie zufällig durchzumischen.
+                # Dadurch kleben gleiche Wörter nicht immer starr an der gleichen Stelle.
+                items = list(word_counts.items())
+                random.seed(42)  # Sorgt für eine stabile Verteilung pro Ladevorgang, damit es nicht wild flackert
+                random.shuffle(items)
                 
-                for phrase, count in word_counts.items():
-                    # Schriftgröße berechnen: Häufigere Antworten werden größer (16px bis 50px)
-                    size = 16 + (count / max_count) * 34 if max_count > 1 else 24
+                # HTML-Container für die Wolke
+                html_content = """
+                <div style='
+                    display: flex; 
+                    flex-wrap: wrap; 
+                    justify-content: center; 
+                    align-items: center; 
+                    align-content: center;
+                    gap: 12px 24px; 
+                    padding: 40px; 
+                    background: #ffffff; 
+                    border-radius: 16px; 
+                    min-height: 380px; 
+                    border: 1px solid #e2e8f0;
+                    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+                    overflow: hidden;
+                '>"""
+                
+                for phrase, count in items:
+                    # Schriftgröße berechnen (zwischen 16px und 52px)
+                    size = 16 + (count / max_count) * 36 if max_count > 1 else 24
+                    
+                    # Zufällige Farbe wählen
                     color = random.choice(colors)
                     
-                    # white-space: nowrap verhindert, dass z.B. "New York" umgebrochen wird
-                    html_content += f"<span style='font-size: {size}px; color: {color}; font-weight: bold; font-family: sans-serif; white-space: nowrap; transition: all 0.3s;'>{phrase}</span>"
+                    # Ein paar Wörter leicht rotieren für den echten Wordcloud-Look (z.B. jedes 3. Wort leicht schräg)
+                    rotation = random.choice(["-6deg", "0deg", "6deg", "0deg", "-3deg", "3deg"])
+                    
+                    # HTML-Element für das Wort/die Phrase zusammenbauen
+                    html_content += f"""
+                    <span style='
+                        font-size: {size}px; 
+                        color: {color}; 
+                        font-weight: bold; 
+                        font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+                        white-space: nowrap; 
+                        transform: rotate({rotation});
+                        display: inline-block;
+                        margin: 5px;
+                        padding: 2px 6px;
+                        transition: all 0.4s ease;
+                    '>{phrase}</span>
+                    """
                 
                 html_content += "</div>"
                 
-                # HTML in Streamlit rendern
                 st.markdown(html_content, unsafe_allow_html=True)
             else:
                 st.info("Waiting for submissions... The word cloud will appear here once participants send their answers.")
