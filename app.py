@@ -1,6 +1,8 @@
 import streamlit as st
 import random
 import os
+import segno
+import io
 
 # Datei, in der die Antworten auf dem Server gespeichert werden
 DATA_FILE = "submissions.txt"
@@ -20,58 +22,119 @@ def load_submissions():
     return submissions
 
 def save_submission(nationality, text):
-    # Ersetze Zeilenumbüche im Text, damit das Dateiformat sauber bleibt
-    safe_text = text.replace("\n", " ").replace("||", " ")
+    safe_nationality = nationality.replace("\n", " ").replace("||", " ").strip()
+    safe_text = text.replace("\n", " ").replace("||", " ").strip()
     with open(DATA_FILE, "a", encoding="utf-8") as f:
-        f.write(f"{nationality}||{safe_text}\n")
+        f.write(f"{safe_nationality}||{safe_text}\n")
 
-# Streamlit Layout
-st.set_page_config(page_title="Interactive Q&A", page_icon="🎲")
-st.title("Interactive Presentation")
+# Streamlit Setup (Weitwinkel-Ansicht für den Beamer)
+st.set_page_config(page_title="Interactive Q&A", page_icon="🎲", layout="wide")
 
-# --- USER SECTION (What people see on their phones) ---
-st.write("### 📝 Submit Your Answer")
-st.info("**Question:** What is your favorite travel destination and why?")
+# --- ERKENNUNG DER ANSICHT (BEAMER VS. HANDY) ---
+# Holt den Parameter "view" aus der URL (z.B. ?view=phone)
+query_params = st.query_params
+is_phone_view = query_params.get("view") == "phone"
 
-with st.form("survey_form", clear_on_submit=True):
-    nationality = st.selectbox(
-        "Your Nationality:", 
-        ["Germany", "Austria", "Switzerland", "Spain", "Italy", "France", "USA", "United Kingdom", "Turkey", "Other"]
-    )
-    answer = st.text_area("Your Answer:", placeholder="Type your answer here...")
-    submitted = st.form_submit_button("Send Answer 🚀")
+# --- 📱 HANDY-ANSICHT ---
+if is_phone_view:
+    st.title("📝 Submit Your Answer")
+    st.write("---")
     
-    if submitted:
-        if answer.strip() == "":
-            st.error("Please enter an answer before submitting!")
-        else:
-            save_submission(nationality, answer)
-            st.success("Successfully submitted! Watch the presentation screen.")
+    with st.form("survey_form", clear_on_submit=True):
+        # Jetzt als Texteingabe statt Dropdown
+        nationality = st.text_input("Your Nationality:", placeholder="e.g., German, Spanish, French...")
+        answer = st.text_area("Your Answer:", placeholder="Type your answer here...")
+        submitted = st.form_submit_button("Send Answer 🚀")
+        
+        if submitted:
+            if not nationality.strip():
+                st.error("Please enter your nationality!")
+            elif not answer.strip():
+                st.error("Please enter your answer!")
+            else:
+                save_submission(nationality, answer)
+                st.success("Successfully submitted! Watch the presentation screen.")
 
-st.write("---")
+# --- 🖥️ LAPTOP / BEAMER-ANSICHT ---
+else:
+    # 1. Große Frage ganz oben
+    st.markdown("<h1 style='text-align: center; font-size: 3rem;'>Today's Big Question:</h1>", unsafe_allow_name_matching=True)
+    st.markdown("<div style='background-color: #f0f2f6; padding: 25px; border-radius: 10px; text-align: center; margin-bottom: 30px;'><h2 style='font-size: 2.2rem; color: #1f77b4; margin: 0;'>\"What is your favorite travel destination and why?\"</h2></div>", unsafe_allow_name_matching=True)
+    
+    # Zweispaltiges Layout: Links der QR-Code, rechts die Admin-Steuerung
+    col_left, col_right = st.columns([1, 1.2])
+    
+    with col_left:
+        st.write("### 📲 Scan to Participate")
+        st.write("Scan this code with your smartphone to join the session:")
+        
+        # Dynamische Ermittlung der eigenen URL
+        # Wenn lokal getestet wird, nutzt es localhost, auf Streamlit Cloud die echte URL
+        try:
+            # Versucht die aktuelle URL zu greifen, um den QR-Code automatisch anzupassen
+            base_url = st.get_option("server.address") if st.get_option("server.address") else "localhost"
+            # Fallback falls online auf Streamlit Cloud
+            if "streamlit.app" in st.experimental_user.get("email", ""): 
+                # Ein kleiner Trick um den Cloud-Link zu raten, falls das fehlschlägt, tragt unten eure feste URL ein!
+                current_url = "https://share.streamlit.io" 
+            else:
+                current_url = "http://localhost:8501"
+        except:
+            current_url = "http://localhost:8501" # Lokaler Fallback
+            
+        # TIPP: Ersetze diese URL hier mit deiner echten Streamlit-URL, sobald du sie hochgeladen hast!
+        # Z.B. app_url = "https://dein-projekt.streamlit.app/?view=phone"
+        app_url = f"{current_url}/?view=phone"
+        
+        # QR Code generieren mithilfe von Segno
+        qr = segno.make(app_url)
+        qr_img = io.BytesIO()
+        qr.save(qr_img, kind='png', scale=10)
+        st.image(qr_img.getvalue(), width=280)
+        st.caption(f"Direct link: {app_url}")
+        
+    with col_right:
+        st.write("### 📊 Live Stats & Controls")
+        
+        # Echtzeit-Daten laden
+        all_answers = load_submissions()
+        
+        # Große Anzeige der eingegangenen Stimmen
+        st.metric(label="Answers Received", value=len(all_answers))
+        st.write("---")
+        
+        # Buttons für die Steuerung
+        btn_col1, btn_col2 = st.columns(2)
+        
+        with btn_col1:
+            if st.button("Pick a Random Answer 🎲", use_container_width=True, type="primary"):
+                if all_answers:
+                    winner = random.choice(all_answers)
+                    st.balloons()
+                    # Wir speichern den Gewinner in der Session, damit er nicht beim nächsten Laden verschwindet
+                    st.session_state.current_winner = winner
+                else:
+                    st.warning("No answers submitted yet.")
+                    
+        with btn_col2:
+            if st.button("Reset All Answers 🗑️", use_container_width=True):
+                if os.path.exists(DATA_FILE):
+                    os.remove(DATA_FILE)
+                if "current_winner" in st.session_state:
+                    del st.session_state.current_winner
+                st.success("All answers cleared!")
+                st.rerun()
 
-# --- ADMIN SECTION (What you show on the projector/beamer) ---
-st.write("### 🖥️ Admin Console (Projector View)")
-
-# Lade die aktuellen Antworten live aus der gemeinsamen Datei
-all_answers = load_submissions()
-st.write(f"Total answers received so far: **{len(all_answers)}**")
-
-# Button, um die Antworten zurückzusetzen (falls du die App neu starten willst)
-col1, col2 = st.columns([1, 1])
-
-with col1:
-    if st.button("Pick a Random Answer 🎲", use_container_width=True):
-        if all_answers:
-            winner = random.choice(all_answers)
-            st.balloons()
-            st.info(f"🌍 **Nationality:** {winner['nationality']}\n\n💬 **Answer:** {winner['text']}")
-        else:
-            st.warning("No answers submitted yet.")
-
-with col2:
-    if st.button("Reset All Answers 🗑️", use_container_width=True):
-        if os.path.exists(DATA_FILE):
-            os.remove(DATA_FILE)
-        st.success("All answers cleared!")
-        st.rerun()
+        # Zeige den gezogenen Gewinner groß an
+        if "current_winner" in st.session_state:
+            winner = st.session_state.current_winner
+            st.markdown(
+                f"""
+                <div style='border: 2px solid #ff4b4b; padding: 20px; border-radius: 10px; margin-top: 20px; background-color: #fff2f2;'>
+                    <h3 style='color: #ff4b4b; margin-top: 0;'>🎉 Selected Answer:</h3>
+                    <p style='font-size: 1.2rem; margin-bottom: 8px;'>🌍 <b>Nationality:</b> {winner['nationality']}</p>
+                    <p style='font-size: 1.4rem; font-style: italic; color: #333;'>"{winner['text']}"</p>
+                </div>
+                """, 
+                unsafe_allow_html=True
+            )
