@@ -70,9 +70,9 @@ else:
         
         app_url = f"{my_base_url}/?view=phone"
         
-        # QR-Code über die kostenlose Google Chart API generieren (Keine Installation nötig!)
+        # QR-Code über die super stabile QRServer-API generieren (völlig ohne Installation!)
         encoded_url = urllib.parse.quote_plus(app_url)
-        qr_api_url = f"https://chart.googleapis.com/chart?chs=300x300&cht=qr&chl={encoded_url}&choof=utf-8"
+        qr_api_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={encoded_url}"
         
         # Bild direkt via URL anzeigen
         st.image(qr_api_url, width=280)
