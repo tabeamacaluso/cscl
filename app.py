@@ -12,9 +12,9 @@ STATE_FILE = "app_state.json"
 
 # Die drei auswählbaren Fragen
 QUESTIONS = [
-    "What is your favorite travel destination and why?",
-    "Which programming language do you prefer?",
-    "How are you feeling today?"
+    "What advice would you give to someone who wants to visit your country?",
+    "How do you greet other people?",
+    "What is a common dish in your country?"
 ]
 
 # --- Hilfsfunktionen für Speichern & Laden ---
