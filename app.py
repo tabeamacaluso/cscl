@@ -18,7 +18,7 @@ QUESTIONS = [
     "What is a common dish in your country?"
 ]
 
-FINAL_QUESTION = "What is the one thing from today that you will remember forever?"
+FINAL_QUESTION = "Did any response change or challenge your previous assumption? Why?"
 
 # --- Hilfsfunktionen für Speichern & Laden ---
 def load_submissions():
