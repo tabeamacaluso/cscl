@@ -11,12 +11,14 @@ from collections import Counter
 DATA_FILE = "submissions.json"
 STATE_FILE = "app_state.json"
 
-# Die drei auswählbaren Fragen
+# Die auswählbaren Fragen + Die Finale Frage
 QUESTIONS = [
     "What advice would you give to someone who wants to visit your country?",
     "How do you greet other people?",
     "What is a common dish in your country?"
 ]
+
+FINAL_QUESTION = "What is the one thing from today that you will remember forever?"
 
 # --- Hilfsfunktionen für Speichern & Laden ---
 def load_submissions():
@@ -33,7 +35,6 @@ def save_submission(question, nationality, text):
     if question not in data:
         data[question] = []
     
-    # Speichert Nationalität und Text als Dictionary ab
     data[question].append({
         "nationality": nationality.strip(),
         "text": text.strip()
@@ -59,6 +60,10 @@ def save_active_question(question):
 # Streamlit Setup (Breitbild für Beamer)
 st.set_page_config(page_title="Interactive Presentation", page_icon="🎲", layout="wide")
 
+# Session State für das Finale-Feature initialisieren
+if "show_final" not in st.session_state:
+    st.session_state.show_final = False
+
 # --- ERKENNUNG DER ANSICHT (BEAMER VS. HANDY) ---
 query_params = st.query_params
 is_phone_view = query_params.get("view") == "phone"
@@ -68,7 +73,6 @@ if is_phone_view:
     st.title("📝 Submit Your Answer")
     st.write("---")
     
-    # Aktualisiert die Frage alle 2 Sekunden im Hintergrund, falls der Beamer sie wechselt
     @st.fragment(run_every=2)
     def live_question_for_user():
         active_q = load_active_question()
@@ -94,123 +98,157 @@ if is_phone_view:
 
 # --- 🖥️ LAPTOP / BEAMER-ANSICHT ---
 else:
-    st.markdown("<h1 style='text-align: center; font-size: 2.5rem; margin-bottom: 20px;'>Interactive Presentation Panel</h1>", unsafe_allow_html=True)
-    
-    # 1. Fragenauswahl oben für den Präsentator
-    current_active = load_active_question()
-    try:
-        start_index = QUESTIONS.index(current_active)
-    except ValueError:
-        start_index = 0
-
-    selected_q = st.selectbox(
-        "Select the active question for your audience:", 
-        QUESTIONS, 
-        index=start_index
-    )
-    
-    if selected_q != current_active:
-        save_active_question(selected_q)
-        st.rerun()
-
-    st.markdown("---")
-    
-    # Zweispaltiges Layout: Links QR-Code & Controls, rechts Live-Wordcloud
-    col_left, col_right = st.columns([1, 1.3])
-    
-    with col_left:
-        st.write("### 📲 Scan to Participate")
-        st.write("Scan this code with your phone to join and answer:")
+    # 🎯 FEATURE: VOLLBILD FINALE FRAGE
+    if st.session_state.show_final:
+        # Platz oben schaffen für die perfekte Zentrierung
+        st.markdown("<br><br><br>", unsafe_allow_html=True)
         
-        # HIER DEINE ECHTE URL EINTRAGEN:
-        my_base_url = "https://cultureconnect.streamlit.app/" 
-        app_url = f"{my_base_url}/?view=phone"
+        # Riesiges, elegantes Layout für die finale Frage
+        st.markdown(
+            f"""
+            <div style='
+                text-align: center; 
+                padding: 60px 40px; 
+                background: linear-gradient(135deg, #1f77b4 0%, #0f4c81 100%); 
+                border-radius: 20px; 
+                box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+                margin: 0 auto;
+                max-width: 1000px;'>
+                <h3 style='color: #a5d8ff; font-size: 1.8rem; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 20px;'>Final Question</h3>
+                <h1 style='color: #ffffff; font-size: 3.5rem; font-weight: 700; line-height: 1.3; margin: 0;'>
+                    "{FINAL_QUESTION}"
+                </h1>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
         
-        # QR-Code über die api.qrserver.com API generieren
-        encoded_url = urllib.parse.quote_plus(app_url)
-        qr_api_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={encoded_url}"
+        st.markdown("<br><br>", unsafe_allow_html=True)
         
-        st.image(qr_api_url, width=240)
-        st.caption(f"Direct link: [Link]({app_url})")
-        st.write("---")
-        
-        # Controls & Buttons
-        st.write("### ⚙️ Controls")
-        
-        all_data = load_submissions()
-        current_answers = all_data.get(selected_q, [])
-        st.metric(label="Answers for this question", value=len(current_answers))
-        
-        btn_col1, btn_col2 = st.columns(2)
-        
-        with btn_col1:
-            if st.button("Pick Random 🎲", use_container_width=True, type="primary"):
-                if current_answers:
-                    winner = random.choice(current_answers)
-                    st.balloons()
-                    st.session_state.current_winner = winner
-                else:
-                    st.warning("No answers yet.")
-                    
-        with btn_col2:
-            if st.button("Reset Answers 🗑️", use_container_width=True):
-                # Löscht nur die Antworten der AKTUELLEN Frage
-                all_data = load_submissions()
-                if selected_q in all_data:
-                    del all_data[selected_q]
-                with open(DATA_FILE, "w", encoding="utf-8") as f:
-                    json.dump(all_data, f, ensure_ascii=False, indent=4)
-                
-                if "current_winner" in st.session_state:
-                    del st.session_state.current_winner
-                st.success("Answers cleared!")
+        # Unaufdringlicher Button ganz unten, um den Modus wieder zu beenden
+        col_btn1, col_btn2, col_btn3 = st.columns([2, 1, 2])
+        with col_btn2:
+            if st.button("⬅️ Back to Dashboard", use_container_width=True):
+                st.session_state.show_final = False
                 st.rerun()
-        
-        # Gewinneranzeige
-        if "current_winner" in st.session_state:
-            winner = st.session_state.current_winner
-            st.markdown(
-                f"""
-                <div style='border: 2px solid #ff4b4b; padding: 15px; border-radius: 10px; margin-top: 15px; background-color: #fff2f2;'>
-                    <h4 style='color: #ff4b4b; margin: 0;'>🎉 Selected Answer:</h4>
-                    <p style='font-size: 1.1rem; margin: 5px 0;'>🌍 <b>From:</b> {winner['nationality']}</p>
-                    <p style='font-size: 1.2rem; font-style: italic; color: #333;'>"{winner['text']}"</p>
-                </div>
-                """, 
-                unsafe_allow_html=True
-            )
 
-    with col_right:
-        st.write("### ☁️ Live Word Cloud")
+    # 🖥️ NORMALE BEAMER-ANSICHT (Wenn Finale deaktiviert ist)
+    else:
+        st.markdown("<h1 style='text-align: center; font-size: 2.5rem; margin-bottom: 20px;'>Interactive Presentation Panel</h1>", unsafe_allow_html=True)
         
-        # Aktualisiert die Wordcloud alle 3 Sekunden live
-        @st.fragment(run_every=20)
-        def live_wordcloud(question):
-            all_data = load_submissions()
-            raw_answers = [ans["text"].strip() for ans in all_data.get(question, []) if ans["text"].strip()]
+        # 1. Fragenauswahl oben für den Präsentator
+        current_active = load_active_question()
+        try:
+            start_index = QUESTIONS.index(current_active)
+        except ValueError:
+            start_index = 0
+
+        selected_q = st.selectbox(
+            "Select the active question for your audience:", 
+            QUESTIONS, 
+            index=start_index
+        )
+        
+        if selected_q != current_active:
+            save_active_question(selected_q)
+            st.rerun()
+
+        st.markdown("---")
+        
+        # Zweispaltiges Layout: Links QR-Code & Controls, rechts Live-Wordcloud
+        col_left, col_right = st.columns([1, 1.3])
+        
+        with col_left:
+            st.write("### 📲 Scan to Participate")
+            st.write("Scan this code with your phone to join and answer:")
             
-            if raw_answers:
-                # 1. Wir zählen die Häufigkeiten der kompletten Antworten (Phrasen bleiben intakt!)
-                word_counts = Counter(raw_answers)
+            my_base_url = "https://cultureconnect.streamlit.app/" 
+            app_url = f"{my_base_url}/?view=phone"
+            
+            encoded_url = urllib.parse.quote_plus(app_url)
+            qr_api_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={encoded_url}"
+            
+            st.image(qr_api_url, width=240)
+            st.caption(f"Direct link: [Link]({app_url})")
+            st.write("---")
+            
+            # Controls & Buttons
+            st.write("### ⚙️ Controls")
+            
+            all_data = load_submissions()
+            current_answers = all_data.get(selected_q, [])
+            st.metric(label="Answers for this question", value=len(current_answers))
+            
+            btn_col1, btn_col2 = st.columns(2)
+            
+            with btn_col1:
+                if st.button("Pick Random 🎲", use_container_width=True, type="primary"):
+                    if current_answers:
+                        winner = random.choice(current_answers)
+                        st.balloons()
+                        st.session_state.current_winner = winner
+                    else:
+                        st.warning("No answers yet.")
+                        
+            with btn_col2:
+                if st.button("Reset Answers 🗑️", use_container_width=True):
+                    all_data = load_submissions()
+                    if selected_q in all_data:
+                        del all_data[selected_q]
+                    with open(DATA_FILE, "w", encoding="utf-8") as f:
+                        json.dump(all_data, f, ensure_ascii=False, indent=4)
+                    
+                    if "current_winner" in st.session_state:
+                        del st.session_state.current_winner
+                    st.success("Answers cleared!")
+                    st.rerun()
+            
+            # 🎯 BUTTON FÜR DAS VOLLBILD-FINALE
+            st.write("")
+            if st.button("Show Final Question 🎯", use_container_width=True):
+                st.session_state.show_final = True
+                st.rerun()
+
+            # Gewinneranzeige
+            if "current_winner" in st.session_state:
+                winner = st.session_state.current_winner
+                st.markdown(
+                    f"""
+                    <div style='border: 2px solid #ff4b4b; padding: 15px; border-radius: 10px; margin-top: 15px; background-color: #fff2f2;'>
+                        <h4 style='color: #ff4b4b; margin: 0;'>🎉 Selected Answer:</h4>
+                        <p style='font-size: 1.1rem; margin: 5px 0;'>🌍 <b>From:</b> {winner['nationality']}</p>
+                        <p style='font-size: 1.2rem; font-style: italic; color: #333;'>"{winner['text']}"</p>
+                    </div>
+                    """, 
+                    unsafe_allow_html=True
+                )
+
+        with col_right:
+            st.write("### ☁️ Live Word Cloud")
+            
+            @st.fragment(run_every=20)
+            def live_wordcloud(question):
+                all_data = load_submissions()
+                raw_answers = [ans["text"].strip() for ans in all_data.get(question, []) if ans["text"].strip()]
                 
-                # 2. Wir generieren die Wordcloud auf Basis des Dictionaries (Häufigkeiten)
-                # 'collocations=False' stellt sicher, dass nichts zerstückelt wird
-                wordcloud = WordCloud(
-                    width=800, 
-                    height=450, 
-                    background_color="white",
-                    colormap="viridis",
-                    collocations=False,
-                    prefer_horizontal=0.7 # 70% der Wörter liegen waagerecht, der Rest senkrecht
-                ).generate_from_frequencies(word_counts)
-                
-                # 3. Das Bild via Matplotlib zeichnen
-                fig, ax = plt.subplots(figsize=(10, 5.5))
-                ax.imshow(wordcloud, interpolation="bilinear")
-                ax.axis("off")
-                plt.tight_layout(pad=0)
-                st.pyplot(fig)
-            else:
-                st.info("Waiting for submissions... The word cloud will appear here once participants send their answers.")
-        
-        live_wordcloud(selected_q)
+                if raw_answers:
+                    word_counts = Counter(raw_answers)
+                    
+                    wordcloud = WordCloud(
+                        width=800, 
+                        height=450, 
+                        background_color="white",
+                        colormap="viridis",
+                        collocations=False,
+                        prefer_horizontal=0.7
+                    ).generate_from_frequencies(word_counts)
+                    
+                    fig, ax = plt.subplots(figsize=(10, 5.5))
+                    ax.imshow(wordcloud, interpolation="bilinear")
+                    ax.axis("off")
+                    plt.tight_layout(pad=0)
+                    st.pyplot(fig)
+                else:
+                    st.info("Waiting for submissions... The word cloud will appear here once participants send their answers.")
+            
+            live_wordcloud(selected_q)
